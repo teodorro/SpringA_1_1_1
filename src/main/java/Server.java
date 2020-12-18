@@ -10,13 +10,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Server {
-    public static void main(String[] args) {
-        new Server().start(9999);
-    }
-
     private List<String> validPaths = List.of("/index.html", "/spring.svg", "/spring.png");
 
-    private void start(int port) {
+    public List<String> getValidPaths() {
+        return validPaths;
+    }
+
+    public void start(int port) {
 
         try (final var serverSocket = new ServerSocket(port)) {
             while (true) {
@@ -37,6 +37,7 @@ public class Server {
     }
 
     private void doSmth( BufferedReader in, BufferedOutputStream out) throws IOException {
+        System.out.println("-- do smth");
         var requestLine = in.readLine();
         var parts = requestLine.split(" ");
         if (parts.length != 3)
