@@ -2,72 +2,58 @@ import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.ByteBuffer;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Server {
+    private ServerSocketChannel serverChannel;
+    private List<ClientHandler> clients = new ArrayList<>();
+    public ExecutorService es = Executors.newFixedThreadPool(64);
+
     private List<String> validPaths = List.of("/index.html", "/spring.svg", "/spring.png");
 
     public List<String> getValidPaths() {
         return validPaths;
     }
 
-    public void start(int port) {
+    public static void main(String[] args) {
+        (new Server()).start("localhost", Main.PORT);
+    }
 
-        try (final var serverSocket = new ServerSocket(port)) {
-            while (true) {
-                try {
-                    final var socket = serverSocket.accept();
-                    final var in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-                    final var out = new BufferedOutputStream(socket.getOutputStream());
 
-                    doSmth(in, out);
-
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                }
+    public void start(String hostname, int port) {
+        openChannel(hostname, port);
+        while (true) {
+            try {
+                SocketChannel socketChannel = serverChannel.accept();
+                es.submit(() -> {
+                    ClientHandler clientHandler = new ClientHandler(socketChannel, validPaths);
+                    clientHandler.start();
+                });
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-        } catch (IOException ex) {
-            ex.printStackTrace();
         }
     }
 
-    private void doSmth( BufferedReader in, BufferedOutputStream out) throws IOException {
-        System.out.println("-- do smth");
-        var requestLine = in.readLine();
-        var parts = requestLine.split(" ");
-        if (parts.length != 3)
-            return;
-
-        var path = parts[1];
-        if (!validPaths.contains(path)) {
-            out.write((
-                    "HTTP/1.1 404 Not Found \r\n" +
-                            "Content-Length: 0\r\n" +
-                            "Connection: close\r\n" +
-                            "\r\n"
-            ).getBytes());
-            out.flush();
-            return;
+    private void openChannel(String ip, int port)  {
+        serverChannel = null;
+        try {
+            serverChannel = ServerSocketChannel.open();
+            serverChannel.bind(new InetSocketAddress(ip, port));
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-
-        var filePath = Path.of(".", "public", path);
-        var mimeType = Files.probeContentType(filePath);
-        var length = Files.size(filePath);
-
-        out.write((
-                "HTTP/1.1 200 OK \r\n" +
-                        "Content-Type: " + mimeType + "\r\n" +
-                        "Content-Length: " + length + "\r\n" +
-                        "Connection: close\r\n" +
-                        "\r\n"
-        ).getBytes());
-        Files.copy(filePath, out);
-        out.flush();
-
     }
 }

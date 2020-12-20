@@ -1,0 +1,9 @@
+public enum RequestAnswer {
+    SOCKET_CHANNEL_NOT_OPENED,
+    ERROR_READING,
+    WRONG_NUMBER_PARTS,
+    NOT_FOUND,
+    OK,
+    ILLEGAL_REQUEST_COMMAND,
+    EMPTY
+}
