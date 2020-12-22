@@ -85,8 +85,7 @@ public class ClientHandler extends Thread {
                 socketChannel.write(ByteBuffer.wrap((
                         "HTTP/1.1 404 Not Found \r\n" +
                                 "Content-Length: 0\r\n" +
-                                "Connection: close\r\n" +
-                                "\r\n"
+                                "Connection: close\r\n"
                 ).getBytes()));
                 return RequestAnswer.NOT_FOUND;
             }
@@ -105,8 +104,7 @@ public class ClientHandler extends Thread {
                     "HTTP/1.1 200 OK \r\n" +
                             "Content-Type: " + mimeType + "\r\n" +
                             "Content-Length: " + length + "\r\n" +
-                            "Connection: close\r\n" +
-                            "\r\n"
+                            "Connection: close\r\n"
             ).getBytes()));
         } catch (IOException e) {
             e.printStackTrace();
