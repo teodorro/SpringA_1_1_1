@@ -17,7 +17,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Server {
-    private ServerSocketChannel serverChannel;
+    private ServerSocket serverSocket;
     private List<ClientHandler> clients = new ArrayList<>();
     public ExecutorService es = Executors.newFixedThreadPool(64);
 
@@ -36,9 +36,9 @@ public class Server {
         openChannel(hostname, port);
         while (true) {
             try {
-                SocketChannel socketChannel = serverChannel.accept();
+                Socket socket = serverSocket.accept();
                 es.submit(() -> {
-                    ClientHandler clientHandler = new ClientHandler(socketChannel, validPaths);
+                    ClientHandler clientHandler = new ClientHandler(socket, validPaths);
                     clientHandler.start();
                 });
             } catch (IOException e) {
@@ -48,10 +48,9 @@ public class Server {
     }
 
     private void openChannel(String ip, int port)  {
-        serverChannel = null;
+        serverSocket = null;
         try {
-            serverChannel = ServerSocketChannel.open();
-            serverChannel.bind(new InetSocketAddress(ip, port));
+            serverSocket = new ServerSocket(port);
         } catch (IOException e) {
             e.printStackTrace();
         }
