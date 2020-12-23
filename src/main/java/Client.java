@@ -1,21 +1,17 @@
 import java.io.*;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.SocketChannel;
-import java.nio.charset.StandardCharsets;
+import java.net.Socket;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.*;
 
 public class Client {
-    private SocketChannel socketChannel;
-    private ByteBuffer inputBuffer;
     private Scanner scanner = new Scanner(System.in);
     private String name;
     private String path = "tmp";
     private List<String> legalRequestCommands = List.of("GET");
-    private String fileRequested;
+    private String fileRequested  = "";
+    private int contentLength;
+    private int responseLineLength;
+    private static final int PORT = 9999;
 
 
     public Client(String name) {
@@ -25,136 +21,117 @@ public class Client {
 
     public static void main(String[] args) {
         Random rand = new Random(System.currentTimeMillis());
-        (new Client("CLIENT_" + rand.nextInt(1000))).start("localhost", Main.PORT);
+        (new Client("CLIENT_" + rand.nextInt(1000))).start("localhost", PORT);
     }
 
-    public void start(String hostname, int port) {
-        openChannel(hostname, port);
-        startTransfer();
-    }
-
-    private void openChannel(String ip, int port) {
-        InetSocketAddress socketAddress = new InetSocketAddress(ip, port);
+    public void start(String hostname, int port){
         try {
-            socketChannel = SocketChannel.open();
-            socketChannel.connect(socketAddress);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        inputBuffer = ByteBuffer.allocate(2 << 10);
-    }
+            Socket socket = new Socket(hostname, port);
 
-    private void startTransfer() {
-        while (socketChannel.isConnected()) {
-            boolean res = sendRequest();
-            if (!res)
-                continue;
-            getResponse();
-            System.out.println("");
-        }
-        stopConnection();
-        System.out.println(name + " off");
-    }
 
-    private boolean sendRequest() {
-        System.out.println(name + ": Enter path...");
-
-        String requestLine = scanner.nextLine();
-//        String requestLine = "GET /index.html HTTP/1.1" + name;
-
-        if (requestLine.isBlank())
-            return false;
-
-        switch (validateRequest(requestLine)){
-            case ILLEGAL_REQUEST_COMMAND:
-                System.out.println("Error: illegal request command");
-                return false;
-            case WRONG_NUMBER_PARTS:
-                System.out.println("Error: wrong command syntax");
-                return false;
-        }
-
-        fileRequested = requestLine.split(" ")[1];
-
-        if (!socketChannel.isOpen())
-            return false;
-        try {
-            socketChannel.write(ByteBuffer.wrap(requestLine.getBytes(StandardCharsets.UTF_8)));
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
-        return true;
-    }
-
-    private RequestAnswer validateRequest(String requestLine) {
-        var parts = requestLine.split(" ");
-        if (parts.length != 3)
-            return RequestAnswer.WRONG_NUMBER_PARTS;
-
-        if (!legalRequestCommands.contains(parts[0]))
-            return RequestAnswer.ILLEGAL_REQUEST_COMMAND;
-
-        return RequestAnswer.OK;
-    }
-
-    private boolean getResponse() {
-        String responseLine = getContentInfo();
-
-        if (responseLine == null)
-            return false;
-        System.out.println(responseLine);
-
-        if (!responseLine.contains("200 OK"))
-            return false;
-
-        int length = getContentLength(responseLine);
-        if (length < 0)
-            return false;
-
-        writeFile(length);
-
-        return true;
-    }
-
-    private void writeFile(int length) {
-        try {
-            var filePath = Path.of(".", "tmp", "\\" + name + "." + fileRequested.substring(1));
-            FileChannel fileChannel = FileChannel.open(filePath, EnumSet.of(StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING));
-            int res = 0;
-            int counter = 0;
-            do{
-                inputBuffer.clear();
-                res = socketChannel.read(inputBuffer);
-                inputBuffer.flip();
-                if (res > 0) {
-                    fileChannel.write(inputBuffer);
-                    counter += res;
+                try (PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
+                     BufferedInputStream in = new BufferedInputStream(socket.getInputStream())
+                ){
+                    while (true) {
+                        boolean res = sendRequest(out);
+                        if (!res)
+                            continue;
+                        res = receiveInfo(in);
+                        if (!res)
+                            continue;
+                        res = transferFile(in);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
-            } while (res > 0  && counter < length);
-            fileChannel.close();
+
+
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    private String getContentInfo() {
-        int bytesCount = 0;
-        try {
-            do {
-                bytesCount = socketChannel.read(inputBuffer);
-                if (bytesCount == 0)
-                    inputBuffer.clear();
-            } while (bytesCount == 0);
+    private boolean transferFile(BufferedInputStream in) {
+        var filePath = Path.of(".", "tmp", "\\" + name + "." + fileRequested.substring(1));
+        try (FileOutputStream fs = new FileOutputStream(filePath.toString())){
+            var content = in.readNBytes(contentLength);
+            fs.write(content);
         } catch (IOException e) {
             e.printStackTrace();
-            inputBuffer.clear();
-            return null;
+            return false;
         }
-        String responseLine = new String(inputBuffer.array(), 0, bytesCount, StandardCharsets.UTF_8).trim();
-        inputBuffer.clear();
-        inputBuffer.flip();
-        return responseLine;
+        return true;
+    }
+
+
+    private boolean receiveInfo(BufferedInputStream in) {
+        try {
+            final var limit = 4096;
+            final var buffer = new byte[limit];
+            in.mark(limit);
+
+
+            var read = in.read(buffer);
+            var responseLines = getStructeredResponse(buffer);
+
+            if (responseLines.isEmpty())
+                return false;
+            if (!responseLines.get(0).contains("200 OK"))
+                return false;
+
+            contentLength = getContentLength(responseLines.stream().filter(x -> x.contains("Content-Length")).findFirst().get());
+            if (contentLength < 0)
+                return false;
+
+            var lastStr = responseLines.stream().filter(x -> x.contains("Connection: close")).findFirst().get();
+            int ind = responseLines.indexOf(lastStr);
+            responseLineLength = responseLines.stream().limit(ind + 1).map(x -> x.length()).reduce(0, Integer::sum);
+
+            in.reset();
+            in.skip(responseLineLength);
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+        return true;
+    }
+
+    private List<String> getStructeredResponse(byte[] buffer) {
+        var lines = new ArrayList<byte[]>();
+        int from = 0;
+        for (int i = 0; i < buffer.length; i++) {
+            if (buffer[i] == '\r' && i < buffer.length - 1 && buffer[i + 1] == '\n') {
+                lines.add(Arrays.copyOfRange(buffer, from, i + 2));
+                from = i + 2;
+                ++i;
+            }
+        }
+
+        var responseLines = new ArrayList<String>();
+        for (var line: lines){
+            responseLines.add(new String(line));
+        }
+        return responseLines;
+    }
+
+
+    private boolean sendRequest(PrintWriter out) {
+        try {
+            System.out.println("Enter request...");
+            String requestLine = scanner.nextLine();
+            out.println(requestLine);
+
+            var request = requestLine.split(" ");
+            if (request[0].contains("GET")){
+                fileRequested = request[1];
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+        return true;
     }
 
     private int getContentLength(String responseLine) {
@@ -175,14 +152,4 @@ public class Client {
             return -1;
         }
     }
-
-    private void stopConnection() {
-        try {
-            socketChannel.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-            System.out.println(e.getMessage());
-        }
-    }
-
 }

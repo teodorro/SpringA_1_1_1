@@ -1,16 +1,6 @@
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.ByteBuffer;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -20,6 +10,7 @@ public class Server {
     private ServerSocket serverSocket;
     private List<ClientHandler> clients = new ArrayList<>();
     public ExecutorService es = Executors.newFixedThreadPool(64);
+    private static final int PORT = 9999;
 
     private List<String> validPaths = List.of("/index.html", "/spring.svg", "/spring.png");
 
@@ -28,7 +19,7 @@ public class Server {
     }
 
     public static void main(String[] args) {
-        (new Server()).start("localhost", Main.PORT);
+        (new Server()).start("localhost", PORT);
     }
 
 
