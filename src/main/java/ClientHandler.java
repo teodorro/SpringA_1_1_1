@@ -1,14 +1,8 @@
 import java.io.*;
-import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.SocketChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.util.EnumSet;
 import java.util.List;
 
 public class ClientHandler extends Thread {
@@ -22,10 +16,10 @@ public class ClientHandler extends Thread {
         this.socket = socket;
         this.validPaths = validPaths;
 
-        func1();
+        startProcess();
     }
 
-    private void func1(){
+    private void startProcess(){
         try {
             final var in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             final var out = new BufferedOutputStream(socket.getOutputStream());
@@ -50,6 +44,23 @@ public class ClientHandler extends Thread {
             var mimeType = Files.probeContentType(filePath);
             var length = Files.size(filePath);
 
+            out.write((
+                    "HTTP/1.1 200 OK \r\n" +
+                            "Content-Type: " + mimeType + "\r\n" +
+                            "Content-Length: " + length + "\r\n" +
+                            "Connection: close\r\n"
+            ).getBytes());
+
+            Files.copy(filePath, out);
+            out.flush();
+
+//            FileInputStream fis = new FileInputStream(filePath.toString());
+//            byte[] buffer = new byte[4096];
+//            while (fis.read(buffer) > 0) {
+//                out.write(buffer);
+//            }
+//            fis.close();
+//            out.flush();
 
 //            var filePath2 = Path.of(".", "tmp", path);
 //            BufferedOutputStream out2 = new BufferedOutputStream(new FileOutputStream(filePath2.toString()));
@@ -65,16 +76,6 @@ public class ClientHandler extends Thread {
 //                            "Connection: close\r\n"
 //            ).getBytes());
 
-            FileInputStream fis = new FileInputStream(filePath.toString());
-            byte[] buffer = new byte[4096];
-            while (fis.read(buffer) > 0) {
-                out.write(buffer);
-            }
-            fis.close();
-            out.flush();
-
-//            Files.copy(filePath, out);
-//            out.flush();
 
         } catch (IOException e) {
             e.printStackTrace();
