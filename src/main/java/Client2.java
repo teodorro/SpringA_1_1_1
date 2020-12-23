@@ -1,11 +1,7 @@
 import java.io.*;
 import java.net.Socket;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Random;
-import java.util.Scanner;
+import java.util.*;
 
 public class Client2 {
     private Scanner scanner = new Scanner(System.in);
@@ -33,86 +29,38 @@ public class Client2 {
             while (true) {
 
                 try (PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
-                     BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
-                     BufferedReader br = new BufferedReader(new InputStreamReader(in))
+                     BufferedInputStream in = new BufferedInputStream(socket.getInputStream())
                 ){
                     boolean res = sendRequest(out);
                     if (!res)
                         continue;
-//                    res = receiveInfo(br);
-//                    if (!res)
-//                        continue;
+                    res = receiveInfo(in);
+                    if (!res)
+                        continue;
                     res = transferFile(in);
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
 
-
-//                try (
-//                        BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-////                    BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
-//                        PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
-//                        Scanner scanner = new Scanner(System.in)) {
-//
-//                    String msg;
-//                    System.out.println("Enter request...");
-//                    msg = scanner.nextLine();
-//                    out.println(msg);
-//                    if ("end".equals(msg)) break;
-//                    while (true) {
-//                        String responseLine = "in.readLine()";
-//                        System.out.println("SERVER: " + responseLine);
-//                        if (responseLine.contains("Connection: close"))// || responseLine.equals(""))
-//                            break;
-////                        if (responseLine.contains("Connection: close")){
-////                            var filePath = Path.of(".", "public", path + "/index.html");
-////                            byte[] buffer = new byte[in..available()];
-////
-////                        }
-//                    }
-//                } catch (IOException e) {
-//                    e.printStackTrace();
-//                }
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-//    private boolean transferFile(Socket socket) {
-//        var filePath = Path.of(".", "tmp", "\\" + name + "." + fileRequested.substring(1));
-//        try (BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
-//        FileOutputStream fs = new FileOutputStream(filePath.toString())){
-//            int res = 0;
-//            int counter = 0;
-//            byte[] buffer = new byte[4096];
-//            do{
-//                res = in.read(buffer);
-//                if (res > 0) {
-//                    fs.write(buffer);
-//                    counter += res;
-//                }
-//            } while (res > 0);
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//            return false;
-//        }
-//        return true;
-//    }
-
     private boolean transferFile(BufferedInputStream in) {
         var filePath = Path.of(".", "tmp", "\\" + name + "." + fileRequested.substring(1));
         try (FileOutputStream fs = new FileOutputStream(filePath.toString())){
             int res = 0;
-            int counter = 0;
-            byte[] buffer = new byte[9];
+            int counter = responseLineLength;
+            byte[] buffer = new byte[contentLength];
             do{
                 res = in.read(buffer);
                 if (res > 0) {
                     fs.write(buffer);
                     counter += res;
                 }
-            } while (res > 0);
+            } while (res > 0 && counter < contentLength + responseLineLength);
         } catch (IOException e) {
             e.printStackTrace();
             return false;
@@ -120,51 +68,34 @@ public class Client2 {
         return true;
     }
 
-//    private boolean receiveInfo(Socket socket) {
-//        try (BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()))){
-//            String responseLine = "";
-//            do {
-//                responseLine += in.readLine();
-//                responseLine += "\r\n";
-//            } while (responseLine.contains("Connection: close"));
-//
-//            if (responseLine == null)
-//                return false;
-//            System.out.println(responseLine);
-//
-//            if (!responseLine.contains("200 OK"))
-//                return false;
-//
-//            contentLength = getContentLength(responseLine);
-//            if (contentLength < 0)
-//                return false;
-//            responseLineLength = responseLine.length();
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//            return false;
-//        }
-//        return true;
-//    }
 
-    private boolean receiveInfo(BufferedReader in) {
+    private boolean receiveInfo(BufferedInputStream in) {
         try {
-            String responseLine = "";
-            do {
-                responseLine += in.readLine();
-                responseLine += "\r\n";
-            } while (!responseLine.contains("Connection: close"));
+            final var limit = 4096;
+            final var buffer = new byte[limit];
+            in.mark(limit);
 
-            if (responseLine == null)
+
+            var read = in.read(buffer);
+            var responseLines = getStructeredResponse(buffer);
+
+            if (responseLines.isEmpty())
                 return false;
-            System.out.println(responseLine);
-
-            if (!responseLine.contains("200 OK"))
+            if (!responseLines.get(0).contains("200 OK"))
                 return false;
 
-            contentLength = getContentLength(responseLine);
+            contentLength = getContentLength(responseLines.stream().filter(x -> x.contains("Content-Length")).findFirst().get());
             if (contentLength < 0)
                 return false;
-            responseLineLength = responseLine.length();
+
+            var lastStr = responseLines.stream().filter(x -> x.contains("Connection: close")).findFirst().get();
+            int ind = responseLines.indexOf(lastStr);
+            responseLineLength = responseLines.stream().limit(ind + 1).map(x -> x.length()).reduce(0, Integer::sum);
+
+//            responseLineLength = responseLine.length();
+            in.reset();
+            in.skip(responseLineLength);
+
         } catch (IOException e) {
             e.printStackTrace();
             return false;
@@ -172,23 +103,36 @@ public class Client2 {
         return true;
     }
 
-//    private boolean sendRequest(Socket socket) {
-//        try (PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true)){
-//            System.out.println("Enter request...");
-//            String requestLine = scanner.nextLine();
-//            out.println(requestLine);
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//            return false;
-//        }
-//        return true;
-//    }
+    private List<String> getStructeredResponse(byte[] buffer) {
+        var lines = new ArrayList<byte[]>();
+        int from = 0;
+        for (int i = 0; i < buffer.length; i++) {
+            if (buffer[i] == '\r' && i < buffer.length - 1 && buffer[i + 1] == '\n') {
+                lines.add(Arrays.copyOfRange(buffer, from, i + 2));
+                from = i + 2;
+                ++i;
+            }
+        }
+
+        var responseLines = new ArrayList<String>();
+        for (var line: lines){
+            responseLines.add(new String(line));
+        }
+        return responseLines;
+    }
+
 
     private boolean sendRequest(PrintWriter out) {
         try {
             System.out.println("Enter request...");
             String requestLine = scanner.nextLine();
             out.println(requestLine);
+
+            var request = requestLine.split(" ");
+            if (request[0].contains("GET")){
+                fileRequested = request[1];
+            }
+
         } catch (Exception e) {
             e.printStackTrace();
             return false;
