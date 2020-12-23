@@ -1,10 +1,5 @@
 import org.apache.http.NameValuePair;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.utils.URLEncodedUtils;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClientBuilder;
 
 import java.io.*;
 import java.net.Socket;
@@ -30,7 +25,6 @@ public class ClientHandler extends Thread {
             final var in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             final var out = new BufferedOutputStream(socket.getOutputStream());
 
-//            var client = getHttpClient();
             while (socket.isConnected()) {
                 var requestLine = in.readLine();
 
@@ -38,12 +32,15 @@ public class ClientHandler extends Thread {
                 if (parts == null) continue;
 
                 var path = parts[1];
-                if (!checkPath(out, path))
+                var shortPath = path.contains("?")
+                        ? path.substring(0, path.indexOf('?'))
+                        : path;
+                if (!checkPath(out, shortPath))
                     continue;
 
-                doURLEncodedUtils(path);
+                var nameValuePairs = getQueryParams(path);
 
-                var filePath = Path.of(".", "public", path);
+                var filePath = Path.of(".", "public", shortPath);
                 var mimeType = Files.probeContentType(filePath);
                 var length = Files.size(filePath);
 
@@ -81,8 +78,9 @@ public class ClientHandler extends Thread {
         return parts;
     }
 
-    private void doURLEncodedUtils(String path) {
-        List<NameValuePair> nameValuePairs = URLEncodedUtils.parse(path, Charset.forName("utf-8"));
+    private List<NameValuePair> getQueryParams(String path) {
+        var valuePairs = path.substring(path.indexOf('?') + 1);
+        return URLEncodedUtils.parse(valuePairs, Charset.forName("utf-8"));
     }
 
     private void writeData(BufferedOutputStream out, Path filePath, String mimeType, long length) throws IOException {
@@ -96,21 +94,5 @@ public class ClientHandler extends Thread {
         Files.copy(filePath, out);
         out.flush();
     }
-
-//    private CloseableHttpClient getHttpClient() {
-//        return HttpClientBuilder.create()
-//                .setDefaultRequestConfig(RequestConfig.custom()
-//                        .setConnectTimeout(5000)
-//                        .setSocketTimeout(30000)
-//                        .setRedirectsEnabled(false)
-//                        .build())
-//                .build();
-//    }
-//
-//    private byte[] getData(CloseableHttpClient httpClient, String url) throws IOException {
-//        HttpGet request = new HttpGet(url);
-//        CloseableHttpResponse response = httpClient.execute(request);
-//        return response.getEntity().getContent().readAllBytes();
-//    }
 
 }

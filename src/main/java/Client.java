@@ -1,12 +1,13 @@
 import java.io.*;
 import java.net.Socket;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
 public class Client {
     private Scanner scanner = new Scanner(System.in);
     private String name;
-    private String path = "tmp";
+    private String tmpDir = "tmp";
     private List<String> legalRequestCommands = List.of("GET");
     private String fileRequested  = "";
     private int contentLength;
@@ -52,7 +53,14 @@ public class Client {
     }
 
     private boolean transferFile(BufferedInputStream in) {
-        var filePath = Path.of(".", "tmp", "\\" + name + "." + fileRequested.substring(1));
+        if (!Files.isDirectory(Path.of(".", tmpDir))) {
+            try {
+                Files.createDirectory(Path.of(".", tmpDir));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        var filePath = Path.of(".", tmpDir, "\\" + name + "." + fileRequested.substring(1));
         try (FileOutputStream fs = new FileOutputStream(filePath.toString())){
             var content = in.readNBytes(contentLength);
             fs.write(content);
@@ -119,12 +127,15 @@ public class Client {
     private boolean sendRequest(PrintWriter out) {
         try {
             System.out.println("Enter request...");
-            String requestLine = scanner.nextLine();
+//            String requestLine = scanner.nextLine();
+            String requestLine = "GET /messages?last=10&first=5 nbb";
             out.println(requestLine);
 
             var request = requestLine.split(" ");
             if (request[0].contains("GET")){
                 fileRequested = request[1];
+                if (fileRequested.contains("?"))
+                    fileRequested = fileRequested.substring(0, fileRequested.indexOf('?'));
             }
 
         } catch (Exception e) {

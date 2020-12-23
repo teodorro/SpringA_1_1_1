@@ -12,7 +12,7 @@ public class Server {
     public ExecutorService es = Executors.newFixedThreadPool(64);
     private static final int PORT = 9999;
 
-    private List<String> validPaths = List.of("/index.html", "/spring.svg", "/spring.png");
+    private List<String> validPaths = List.of("/index.html", "/spring.svg", "/spring.png", "/messages");
 
     public List<String> getValidPaths() {
         return validPaths;
