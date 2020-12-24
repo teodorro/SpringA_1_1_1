@@ -8,7 +8,7 @@ public class Client {
     private Scanner scanner = new Scanner(System.in);
     private String name;
     private String tmpDir = "tmp";
-    private List<String> legalRequestCommands = List.of("GET");
+    private List<String> validRequestMethods = List.of("GET", "POST");
     private String fileRequested  = "";
     private int contentLength;
     private int responseLineLength;
@@ -28,7 +28,6 @@ public class Client {
     public void start(String hostname, int port){
         try {
             Socket socket = new Socket(hostname, port);
-
 
                 try (PrintWriter out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
                      BufferedInputStream in = new BufferedInputStream(socket.getInputStream())
@@ -78,7 +77,6 @@ public class Client {
             final var buffer = new byte[limit];
             in.mark(limit);
 
-
             var read = in.read(buffer);
             var responseLines = getStructeredResponse(buffer);
 
@@ -94,6 +92,9 @@ public class Client {
             var lastStr = responseLines.stream().filter(x -> x.contains("Connection: close")).findFirst().get();
             int ind = responseLines.indexOf(lastStr);
             responseLineLength = responseLines.stream().limit(ind + 1).map(x -> x.length()).reduce(0, Integer::sum);
+
+            for (int i = 0; i < ind + 1; i++)
+                System.out.println(responseLines.get(i).trim());
 
             in.reset();
             in.skip(responseLineLength);
@@ -128,11 +129,13 @@ public class Client {
         try {
             System.out.println("Enter request...");
 //            String requestLine = scanner.nextLine();
-            String requestLine = "GET /messages?last=10&first=5 nbb";
+            String requestLine = "GET /messages?last=10&first=5 HTTP1.1";
+            System.out.println(requestLine + " // hardcoded to make it easier to test. Press enter...");
+            String _a = scanner.nextLine();
             out.println(requestLine);
 
             var request = requestLine.split(" ");
-            if (request[0].contains("GET")){
+            if (validRequestMethods.contains(request[0])){
                 fileRequested = request[1];
                 if (fileRequested.contains("?"))
                     fileRequested = fileRequested.substring(0, fileRequested.indexOf('?'));

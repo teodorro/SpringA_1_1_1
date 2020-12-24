@@ -1,17 +1,21 @@
-import java.io.IOException;
+import org.javatuples.Pair;
+
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Server {
-    private ServerSocket serverSocket;
-    private List<ClientHandler> clients = new ArrayList<>();
-    public ExecutorService es = Executors.newFixedThreadPool(64);
+    private final static String HOSTNAME = "localhost";
     private static final int PORT = 9999;
-
+    private ServerSocket serverSocket;
+    public ExecutorService es = Executors.newFixedThreadPool(64);
+    private Map<Pair<String, String>, Handler> handlers = new HashMap<>();
+    private List<String> validRequestMethods = List.of("GET", "POST");
     private List<String> validPaths = List.of("/index.html", "/spring.svg", "/spring.png", "/messages");
 
     public List<String> getValidPaths() {
@@ -19,7 +23,14 @@ public class Server {
     }
 
     public static void main(String[] args) {
-        (new Server()).start("localhost", PORT);
+        Server server = new Server();
+        addHandlers(server);
+        server.start(HOSTNAME, PORT);
+    }
+
+    private static void addHandlers(Server server) {
+        server.addHandler("GET", "/messages", new Handler1());
+        server.addHandler("POST", "/messages", new Handler2());
     }
 
 
@@ -29,7 +40,7 @@ public class Server {
             try {
                 Socket socket = serverSocket.accept();
                 es.submit(() -> {
-                    ClientHandler clientHandler = new ClientHandler(socket, validPaths);
+                    ClientHandler clientHandler = new ClientHandler(socket, validPaths, validRequestMethods, handlers);
                     clientHandler.start();
                 });
             } catch (IOException e) {
@@ -45,5 +56,11 @@ public class Server {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public void addHandler(String method, String path, Handler handler){
+        if (!validRequestMethods.contains(method))
+            System.out.println("Error adding handler. Invalid method");
+        handlers.put(new Pair<>(method, path), handler);
     }
 }
